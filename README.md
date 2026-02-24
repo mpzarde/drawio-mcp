@@ -34,20 +34,53 @@ This server enables you to build diagrams incrementally by providing stateless t
 
 ## Configuration
 
+> **Note:** This is a fork of [Sujimoshi/drawio-mcp](https://github.com/Sujimoshi/drawio-mcp) with additional features. The published `drawio-mcp` package on npm corresponds to the original repository, not this fork. You must build and run this fork locally.
+
 ### MCP Client Setup
 
-Add this configuration to your MCP client (e.g., Claude Desktop, Cursor):
+#### Using a local build (recommended)
+
+1. Clone this repository and install dependencies:
+
+```bash
+git clone https://github.com/mpzarde/drawio-mcp.git
+cd drawio-mcp
+npm install
+npm run build
+```
+
+2. Configure your MCP client to run the built output directly with `node`, using the **absolute path** to the `dist/index.js` file:
 
 ```json
 {
   "mcpServers": {
     "drawio-diagrams": {
-      "command": "npx",
-      "args": ["drawio-mcp"]
+      "command": "node",
+      "args": ["/absolute/path/to/drawio-mcp/dist/index.js"]
     }
   }
 }
 ```
+
+Replace `/absolute/path/to/drawio-mcp` with the actual path where you cloned the repository.
+
+#### Using the development server (no build step)
+
+If you want to run directly from TypeScript source (useful when actively modifying the code), configure the client to invoke `npm start` in the project directory:
+
+```json
+{
+  "mcpServers": {
+    "drawio-diagrams": {
+      "command": "npm",
+      "args": ["start"],
+      "cwd": "/absolute/path/to/drawio-mcp"
+    }
+  }
+}
+```
+
+This uses `tsx` to execute the TypeScript source directly without a compilation step.
 
 ### File Paths
 
@@ -887,14 +920,11 @@ src/
 # Install dependencies
 npm install
 
-# Run TypeScript compilation
+# Run TypeScript compilation (outputs to ./dist)
 npm run build
 
-# Start development server
+# Start development server (runs TypeScript directly via tsx, no build needed)
 npm start
-
-# Run linting
-npm run lint
 ```
 
 ## Support
