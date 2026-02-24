@@ -8,6 +8,9 @@ import { AddNodeTool } from './mcp/AddNodeTool.js';
 import { Logger } from './Logger.js';
 import { EditNodeTool } from './mcp/EditNodeTool.js';
 import { RemoveNodesTool } from './mcp/RemoveNodesTool.js';
+import { FindNodesTool } from './mcp/FindNodesTool.js';
+import { ListTabsTool } from './mcp/ListTabsTool.js';
+import { CopyNodesTool } from './mcp/CopyNodesTool.js';
 
 new McpServer({
   name: 'drawio-mcp',
@@ -19,6 +22,9 @@ new McpServer({
     new GetDiagramInfoTool(),
     new EditNodeTool(),
     new RemoveNodesTool(),
+    new FindNodesTool(),
+    new ListTabsTool(),
+    new CopyNodesTool(),
   ]
 }).run().catch(error => {
   Logger.main.error('Failed to start MCP server', { error });

@@ -16,6 +16,10 @@ export class LinkNodesTool implements Tool {
             type: 'string',
             description: 'Absolute or relative path to the diagram file to modify'
           },
+          tab: {
+            type: ['string', 'number'],
+            description: 'Optional tab name or index to modify (defaults to first tab)'
+          },
           edges: {
             type: 'array',
             description: 'Array of edges to create',
@@ -38,12 +42,12 @@ export class LinkNodesTool implements Tool {
     }
   }
 
-  async execute({ file_path, edges }) {
+  async execute({ file_path, tab, edges }) {
     if (!file_path || !edges || !edges.length) {
       throw new McpError(ErrorCode.InvalidParams, 'file_path, from, and to are required');
     }
 
-    const graph = await this.fileManager.loadGraphFromSvg(file_path);
+    const graph = await this.fileManager.loadGraph(file_path, tab);
 
     for (const edge of edges) {
       const { from, to, title, dashed, reverse, undirected } = edge;
@@ -52,11 +56,11 @@ export class LinkNodesTool implements Tool {
         ...(dashed && { dashed: 1 }),
         ...(reverse && { reverse: true }),
       };
-      
+
       graph.linkNodes({ from, to, title, style, undirected });
     }
 
-    await this.fileManager.saveGraphToSvg(graph, file_path);
+    await this.fileManager.saveGraph(graph, file_path, typeof tab === 'string' ? tab : undefined);
     
     return {
       content: [

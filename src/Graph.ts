@@ -159,17 +159,23 @@ export class Graph {
   }
 
   
-  addNode({ id, title, parent = 'root', kind = 'Rectangle', x = 10, y = 10, corner_radius, ...rest }) {
+  addNode({ id, title, parent = 'root', kind = 'Rectangle', x = 10, y = 10, corner_radius, data, ...rest }) {
     const normalizedKind = Graph.normalizeKind(kind)
     const { style, width, height } = { ...Graph.Kinds[normalizedKind], ...rest }
-    
+
     const to = parent === 'root' ? this.root : this.model.getCell(parent)
     const node = this.graph.insertVertex(to, id, title, Number(x), Number(y), width, height);
     node.setStyle(this.adjustStyleByKind(style, normalizedKind, corner_radius));
+
+    // Store custom data properties on the cell
+    if (data && typeof data === 'object') {
+      node.data = JSON.stringify(data);
+    }
+
     return node
   }
 
-  editNode({ id, title, kind, x, y, width, height, corner_radius }) {
+  editNode({ id, title, kind, x, y, width, height, corner_radius, data }) {
     const node = this.model.getCell(id);
 
     if (!node) throw new Error(`Node not found`);
@@ -192,6 +198,18 @@ export class Graph {
         width ?? geometry.width,
         height ?? geometry.height
       ));
+    }
+
+    // Update custom data properties
+    if (data !== undefined) {
+      if (data === null) {
+        // Remove data if explicitly set to null
+        delete node.data;
+      } else if (typeof data === 'object') {
+        // Merge with existing data
+        const existingData = node.data ? JSON.parse(node.data) : {};
+        node.data = JSON.stringify({ ...existingData, ...data });
+      }
     }
 
     return this
@@ -228,6 +246,120 @@ export class Graph {
     const cells = ids.map(id => this.model.getCell(id));
     this.graph.removeCells(cells);
     return this
+  }
+
+  /**
+   * Get detailed information about a node including custom data
+   * @param {string} id - Node ID
+   * @returns {object|null} - Node information or null if not found
+   */
+  getNodeInfo(id: string) {
+    const cell = this.model.getCell(id);
+    if (!cell || !cell.vertex) return null;
+
+    const geometry = cell.getGeometry();
+    const style = cell.getStyle();
+
+    // Parse style to determine kind
+    let kind = 'Rectangle';
+    if (style) {
+      const styleObj = this.parseStyle(style);
+      if (styleObj.ellipse !== undefined) kind = 'Ellipse';
+      else if (styleObj.shape === 'cylinder3') kind = 'Cylinder';
+      else if (styleObj.shape === 'cloud') kind = 'Cloud';
+      else if (styleObj.shape === 'step') kind = 'Step';
+      else if (styleObj.shape === 'umlActor') kind = 'Actor';
+      else if (styleObj.strokeColor === 'none' && styleObj.fillColor === 'none') kind = 'Text';
+      else if (styleObj.aspect === 'fixed' && styleObj.ellipse !== undefined) kind = 'Circle';
+      else if (styleObj.aspect === 'fixed') kind = 'Square';
+      else if (styleObj.rounded === '1' && styleObj.absoluteArcSize === '1') kind = 'RoundedRectangle';
+    }
+
+    const result: any = {
+      id: cell.getId(),
+      title: cell.getValue() || '',
+      kind,
+      x: geometry ? geometry.x : 0,
+      y: geometry ? geometry.y : 0,
+      width: geometry ? geometry.width : 0,
+      height: geometry ? geometry.height : 0,
+      parent: cell.getParent()?.getId() || 'root'
+    };
+
+    // Include custom data if present
+    if (cell.data) {
+      try {
+        result.data = JSON.parse(cell.data);
+      } catch (e) {
+        result.data = cell.data;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get all nodes in the graph with their properties
+   * @returns {Array} - Array of node information objects
+   */
+  getAllNodes() {
+    const nodes: any[] = [];
+    const cells = this.model.cells;
+
+    for (const cellId in cells) {
+      const cell = cells[cellId];
+      if (cell && cell.vertex && cellId !== '0' && cellId !== '1') {
+        const nodeInfo = this.getNodeInfo(cellId);
+        if (nodeInfo) {
+          nodes.push(nodeInfo);
+        }
+      }
+    }
+
+    return nodes;
+  }
+
+  /**
+   * Find nodes matching filter criteria
+   * @param {object} filters - Search criteria
+   * @returns {Array} - Array of matching nodes
+   */
+  findNodes(filters: any = {}) {
+    const allNodes = this.getAllNodes();
+
+    return allNodes.filter(node => {
+      // Filter by ID
+      if (filters.id && node.id !== filters.id) return false;
+      if (filters.id_contains && !node.id.includes(filters.id_contains)) return false;
+
+      // Filter by title
+      if (filters.title && node.title !== filters.title) return false;
+      if (filters.title_contains) {
+        const titleLower = node.title.toLowerCase();
+        const searchLower = filters.title_contains.toLowerCase();
+        if (!titleLower.includes(searchLower)) return false;
+      }
+
+      // Filter by kind
+      if (filters.kind && node.kind !== filters.kind) return false;
+
+      // Filter by position ranges
+      if (filters.x_min !== undefined && node.x < filters.x_min) return false;
+      if (filters.x_max !== undefined && node.x > filters.x_max) return false;
+      if (filters.y_min !== undefined && node.y < filters.y_min) return false;
+      if (filters.y_max !== undefined && node.y > filters.y_max) return false;
+
+      // Filter by custom data properties
+      if (filters.data && node.data) {
+        for (const key in filters.data) {
+          if (node.data[key] !== filters.data[key]) return false;
+        }
+      } else if (filters.data && !node.data) {
+        return false;
+      }
+
+      return true;
+    });
   }
 
   /**

@@ -17,6 +17,10 @@ export class EditNodeTool implements Tool {
             type: 'string',
             description: 'Absolute or relative path to the diagram file to modify'
           },
+          tab: {
+            type: ['string', 'number'],
+            description: 'Optional tab name or index to modify (defaults to first tab)'
+          },
           nodes: {
             type: 'array',
             description: 'Array of nodes to edit',
@@ -34,7 +38,8 @@ export class EditNodeTool implements Tool {
                 y: { type: 'number', description: 'New node Y coordinate, only appliable to nodes (optional)' },
                 width: { type: 'number', description: 'New node width, only appliable to nodes (optional)' },
                 height: { type: 'number', description: 'New node height, only appliable to nodes (optional)' },
-                corner_radius: { type: 'integer', minimum: 1, description: 'Corner radius in pixels (≥1), applies to RoundedRectangle' }
+                corner_radius: { type: 'integer', minimum: 1, description: 'Corner radius in pixels (≥1), applies to RoundedRectangle' },
+                data: { type: 'object', description: 'Custom data properties to update/merge (key-value pairs)' }
               },
               required: ['id']
             }
@@ -45,20 +50,20 @@ export class EditNodeTool implements Tool {
     }
   }
 
-  async execute({ file_path, nodes }) {
+  async execute({ file_path, tab, nodes }) {
     if (!file_path || !nodes || !nodes.length) {
       throw new McpError(ErrorCode.InvalidParams, 'file_path and nodes are required');
     }
 
-    const graph = await this.fileManager.loadGraphFromSvg(file_path);
+    const graph = await this.fileManager.loadGraph(file_path, tab);
 
     for (const node of nodes) {
-      const { id, title, kind, x, y, width, height, corner_radius } = node;
-      
-      graph.editNode({ id, title, kind: kind ? Graph.normalizeKind(kind) : undefined, x, y, width, height, ...(corner_radius && { corner_radius: Number(corner_radius) }) });
+      const { id, title, kind, x, y, width, height, corner_radius, data } = node;
+
+      graph.editNode({ id, title, kind: kind ? Graph.normalizeKind(kind) : undefined, x, y, width, height, ...(corner_radius && { corner_radius: Number(corner_radius) }), ...(data && { data }) });
     }
 
-    await this.fileManager.saveGraphToSvg(graph, file_path);
+    await this.fileManager.saveGraph(graph, file_path, typeof tab === 'string' ? tab : undefined);
 
     return {
       content: [

@@ -15,6 +15,10 @@ export class GetDiagramInfoTool implements Tool {
           file_path: {
             type: 'string',
             description: 'Absolute or relative path to the diagram file to inspect'
+          },
+          tab: {
+            type: ['string', 'number'],
+            description: 'Optional tab name or index to inspect (defaults to first tab)'
           }
         },
         required: ['file_path']
@@ -22,12 +26,12 @@ export class GetDiagramInfoTool implements Tool {
     }
   }
 
-  async execute({ file_path }) {
+  async execute({ file_path, tab }) {
     if (!file_path) {
       throw new McpError(ErrorCode.InvalidParams, 'file_path is required');
     }
-    
-    const graph = await this.fileManager.loadGraphFromSvg(file_path);
+
+    const graph = await this.fileManager.loadGraph(file_path, tab);
 
     return {
       content: [

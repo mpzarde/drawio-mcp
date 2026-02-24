@@ -16,6 +16,10 @@ export class RemoveNodesTool implements Tool {
             type: 'string',
             description: 'Absolute or relative path to the diagram file to modify'
           },
+          tab: {
+            type: ['string', 'number'],
+            description: 'Optional tab name or index to modify (defaults to first tab)'
+          },
           ids: { 
             type: 'array', 
             description: 'Array of node/edge IDs to remove', 
@@ -30,16 +34,16 @@ export class RemoveNodesTool implements Tool {
     }
   }
 
-  async execute({ file_path, ids }) {
+  async execute({ file_path, tab, ids }) {
     if (!file_path || !ids) {
       throw new McpError(ErrorCode.InvalidParams, 'file_path and ids are required');
     }
 
-    const graph = await this.fileManager.loadGraphFromSvg(file_path);
+    const graph = await this.fileManager.loadGraph(file_path, tab);
 
     graph.removeNodes(ids);
 
-    await this.fileManager.saveGraphToSvg(graph, file_path);
+    await this.fileManager.saveGraph(graph, file_path, typeof tab === 'string' ? tab : undefined);
 
     return {
       content: [

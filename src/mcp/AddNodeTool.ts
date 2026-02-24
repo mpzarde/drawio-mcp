@@ -17,6 +17,10 @@ export class AddNodeTool implements Tool {
             type: 'string',
             description: 'Absolute or relative path to the diagram file to modify'
           },
+          tab: {
+            type: ['string', 'number'],
+            description: 'Optional tab name or index to modify (defaults to first tab)'
+          },
           layout: {
             type: 'object',
             description: 'Optional automatic layout configuration',
@@ -49,7 +53,8 @@ export class AddNodeTool implements Tool {
                 y: { type: 'number', description: 'Y coordinate' },
                 width: { type: 'number', description: 'Custom width (optional)' },
                 height: { type: 'number', description: 'Custom height (optional)' },
-                corner_radius: { type: 'integer', minimum: 1, description: 'Corner radius in pixels (≥1), only for kind RoundedRectangle' }
+                corner_radius: { type: 'integer', minimum: 1, description: 'Corner radius in pixels (≥1), only for kind RoundedRectangle' },
+                data: { type: 'object', description: 'Optional custom data properties (key-value pairs)' }
               },
               required: ['id', 'title', 'x', 'y', 'kind']
             }
@@ -60,26 +65,27 @@ export class AddNodeTool implements Tool {
     }
   }
 
-  async execute({ file_path, nodes, layout }) {
+  async execute({ file_path, tab, nodes, layout }) {
     if (!file_path || !nodes || !nodes.length) {
       throw new McpError(ErrorCode.InvalidParams, 'file_path and nodes are required');
     }
 
-    const graph = await this.fileManager.loadGraphFromSvg(file_path);
+    const graph = await this.fileManager.loadGraph(file_path, tab);
 
     for (const node of nodes) {
-      const { id, title, kind, parent, x, y, width, height, corner_radius } = node;
+      const { id, title, kind, parent, x, y, width, height, corner_radius, data } = node;
 
-      graph.addNode({ 
-        id, 
-        title, 
-        kind: Graph.normalizeKind(kind), 
-        parent, 
-        x: Number(x), 
+      graph.addNode({
+        id,
+        title,
+        kind: Graph.normalizeKind(kind),
+        parent,
+        x: Number(x),
         y: Number(y),
         ...(width && { width: Number(width) }),
         ...(height && { height: Number(height) }),
-        ...(corner_radius && { corner_radius: Number(corner_radius) })
+        ...(corner_radius && { corner_radius: Number(corner_radius) }),
+        ...(data && { data })
       });
     }
 
@@ -95,7 +101,7 @@ export class AddNodeTool implements Tool {
       }
     }
 
-    await this.fileManager.saveGraphToSvg(graph, file_path);
+    await this.fileManager.saveGraph(graph, file_path, typeof tab === 'string' ? tab : undefined);
     
     return {
       content: [

@@ -4,12 +4,16 @@ A Model Context Protocol (MCP) server that provides programmatic tools for creat
 
 ## Overview
 
-This server enables you to build diagrams incrementally by providing stateless tools that operate on `.drawio.svg` files. Each operation specifies the target file, making it compatible with VSCode's draw.io extension while maintaining a clean separation between diagram state and server operations.
+This server enables you to build diagrams incrementally by providing stateless tools that operate on `.drawio` files. Each operation specifies the target file, generating standard draw.io XML format compatible with VSCode's draw.io extension, draw.io web, and desktop applications.
 
 ### Key Features
 
 - **Stateless API**: Each tool call specifies the target file path
-- **VSCode Compatible**: Generates `.drawio.svg` files that work seamlessly with VSCode draw.io extension
+- **Universal Compatibility**: Generates standard `.drawio` XML files that work with VSCode, draw.io web, and desktop applications
+- **Multi-Tab Support**: Work with multiple tabs/pages within a single diagram file
+- **Custom Data Properties**: Store arbitrary metadata on nodes for advanced workflows
+- **Advanced Search**: Find nodes by ID, title, kind, position, or custom data properties
+- **Cross-File Copying**: Copy nodes between files and tabs with full property preservation
 - **Rich Node Types**: Support for rectangles, ellipses, cylinders, clouds, actors, and more
 - **Connection Management**: Create labeled connections with various styling options
 - **Batch Operations**: Create, update, and link multiple nodes in a single MCP call for efficient diagram building
@@ -49,10 +53,54 @@ Add this configuration to your MCP client (e.g., Claude Desktop, Cursor):
 
 The server supports both absolute and relative file paths:
 
-- **Absolute**: `/Users/username/project/diagrams/architecture.drawio.svg`
-- **Relative**: `./diagrams/architecture.drawio.svg` (when cwd is configured)
+- **Absolute**: `/Users/username/project/diagrams/architecture.drawio`
+- **Relative**: `./diagrams/architecture.drawio` (when cwd is configured)
 
-All diagram files should use the `.drawio.svg` extension for proper VSCode integration.
+All diagram files should use the `.drawio` extension for compatibility with draw.io tools.
+
+### Multi-Tab Support
+
+All tools support working with specific tabs (pages) within a diagram file:
+
+- **Default behavior**: Operates on the first tab if not specified (backward compatible)
+- **By name**: `"tab": "Architecture"` - work with a specific named tab
+- **By index**: `"tab": 0` - work with tab by zero-based index
+- **Creating tabs**: Specify a new tab name when saving to create it
+- **Preservation**: Modifying one tab doesn't affect others
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/system.drawio",
+  "tab": "Architecture",
+  "nodes": [...]
+}
+```
+
+### Custom Data Properties
+
+Nodes can store arbitrary custom metadata as key-value pairs:
+
+```json
+{
+  "id": "server1",
+  "title": "Production Server",
+  "data": {
+    "environment": "production",
+    "region": "us-east-1",
+    "owner": "platform-team",
+    "cost_center": "engineering"
+  }
+}
+```
+
+Use cases:
+- **Classification**: Tag nodes by environment, team, priority
+- **Integration**: Store external IDs for linking with other systems
+- **Automation**: Add metadata for scripts and tooling
+- **Search**: Find nodes using `find_nodes` with data filters
+
+Custom data is preserved during copy operations and survives file edits.
 
 ## Tools Reference
 
@@ -75,11 +123,13 @@ Create a new empty diagram file.
 
 **Parameters:**
 - `file_path` (string, required): Path for the new diagram file
+- `tab` (string, optional): Initial tab name (defaults to "Page-1")
 
 **Example:**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg"
+  "file_path": "./diagrams/system-architecture.drawio",
+  "tab": "Architecture"
 }
 ```
 
@@ -89,6 +139,7 @@ Add one or more nodes to an existing diagram in a single operation. Optionally r
 
 **Parameters:**
 - `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to modify (defaults to first tab)
 - `layout` (object, optional): Automatic layout configuration
   - `algorithm` (string, required if `layout` is provided): One of `hierarchical`, `circle`, `organic`, `compact-tree`, `radial-tree`, `partition`, `stack`
   - `options` (object, optional): Algorithm-specific options
@@ -103,6 +154,7 @@ Add one or more nodes to an existing diagram in a single operation. Optionally r
   - `width` (number, optional): Custom width
   - `height` (number, optional): Custom height
   - `corner_radius` (integer, optional): Corner radius in pixels (≥ 1). Only applies to `RoundedRectangle`. Default is 12 when `kind` is `RoundedRectangle` and `corner_radius` is omitted. The effective visual radius is capped by draw.io/mxGraph to at most half of the shorter side of the node.
+  - `data` (object, optional): Custom metadata properties (key-value pairs)
 
 **Available Node Types:**
 - `Rectangle`: Standard rectangular node
@@ -119,7 +171,7 @@ Add one or more nodes to an existing diagram in a single operation. Optionally r
 **Example (Single Node):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "nodes": [
     {
       "id": "user-service",
@@ -137,7 +189,7 @@ Add one or more nodes to an existing diagram in a single operation. Optionally r
 **Example (Multiple Nodes):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "nodes": [
     {
       "id": "user-service",
@@ -167,7 +219,7 @@ Add one or more nodes to an existing diagram in a single operation. Optionally r
 **Example (With Layout):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "layout": {
     "algorithm": "hierarchical",
     "options": { "direction": "left-right" }
@@ -188,6 +240,7 @@ Create one or more connections between existing nodes in a single operation.
 
 **Parameters:**
 - `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to modify (defaults to first tab)
 - `edges` (array, required): Array of edge objects to create, each containing:
   - `from` (string, required): Source node ID
   - `to` (string, required): Target node ID
@@ -199,7 +252,7 @@ Create one or more connections between existing nodes in a single operation.
 **Example (Single Connection):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "edges": [
     {
       "from": "user-service",
@@ -214,7 +267,7 @@ Create one or more connections between existing nodes in a single operation.
 **Example (Multiple Connections):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "edges": [
     {
       "from": "user-service",
@@ -240,7 +293,7 @@ Create one or more connections between existing nodes in a single operation.
 **Example (Undirected Connection):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "edges": [
     {
       "from": "service-a",
@@ -263,6 +316,7 @@ Modify properties of one or more existing nodes or edges in a single operation.
 
 **Parameters:**
 - `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to modify (defaults to first tab)
 - `nodes` (array, required): Array of node/edge objects to update, each containing:
   - `id` (string, required): Node or edge ID to update
   - `title` (string, optional): New display label
@@ -272,11 +326,12 @@ Modify properties of one or more existing nodes or edges in a single operation.
   - `width` (number, optional): New width (nodes only)
   - `height` (number, optional): New height (nodes only)
   - `corner_radius` (integer, optional): Corner radius in pixels (≥ 1). Applies when the node is `RoundedRectangle`. If switching kind to `RoundedRectangle` and omitted, default 12 is applied. Ignored for other kinds.
+  - `data` (object, optional): Custom data properties to update/merge (key-value pairs)
 
 **Example (Single Node):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "nodes": [
     {
       "id": "user-service",
@@ -291,7 +346,7 @@ Modify properties of one or more existing nodes or edges in a single operation.
 **Example (Multiple Nodes):**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "nodes": [
     {
       "id": "user-service",
@@ -320,12 +375,13 @@ Remove one or more nodes from a diagram.
 
 **Parameters:**
 - `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to modify (defaults to first tab)
 - `ids` (array, required): Array of node IDs to remove
 
 **Example:**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg",
+  "file_path": "./diagrams/system-architecture.drawio",
   "ids": ["old-service", "deprecated-db"]
 }
 ```
@@ -336,22 +392,160 @@ Retrieve information about a diagram including nodes and connections.
 
 **Parameters:**
 - `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to inspect (defaults to first tab)
 
 **Example:**
 ```json
 {
-  "file_path": "./diagrams/system-architecture.drawio.svg"
+  "file_path": "./diagrams/system-architecture.drawio"
 }
 ```
 
+---
+
+### find_nodes
+
+Search for nodes in a diagram file using various filter criteria. Search can be performed across all tabs or within a specific tab.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index to search in (searches all tabs if omitted)
+- `filters` (object, optional): Search criteria
+  - `id` (string): Exact ID match
+  - `id_contains` (string): Partial ID match (case-sensitive)
+  - `title` (string): Exact title match
+  - `title_contains` (string): Partial title match (case-insensitive)
+  - `kind` (string): Node shape type (Rectangle, Ellipse, etc.)
+  - `x_min`, `x_max` (number): X coordinate range
+  - `y_min`, `y_max` (number): Y coordinate range
+  - `data` (object): Custom data properties to match (key-value pairs)
+
+**Example (Search by title and data):**
+```json
+{
+  "file_path": "./diagrams/infrastructure.drawio",
+  "tab": "Production",
+  "filters": {
+    "title_contains": "Server",
+    "data": {
+      "environment": "production",
+      "region": "us-east-1"
+    }
+  }
+}
+```
+
+**Returns:**
+```json
+{
+  "results": [
+    {
+      "id": "server1",
+      "title": "Web Server",
+      "kind": "Rectangle",
+      "x": 100,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "tab": "Production",
+      "data": {
+        "environment": "production",
+        "region": "us-east-1"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### list_tabs
+
+List all tabs/pages in a diagram file with their statistics.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/system.drawio"
+}
+```
+
+**Returns:**
+```json
+{
+  "file": "./diagrams/system.drawio",
+  "tabs": [
+    {
+      "name": "Architecture",
+      "index": 0,
+      "id": "diagram-123456",
+      "nodeCount": 15,
+      "edgeCount": 8
+    },
+    {
+      "name": "Data Flow",
+      "index": 1,
+      "id": "diagram-123457",
+      "nodeCount": 23,
+      "edgeCount": 12
+    }
+  ]
+}
+```
+
+---
+
+### copy_nodes
+
+Copy nodes from one diagram file/tab to another, with full property preservation including custom data. Supports ID remapping, position offsetting, and optional edge copying.
+
+**Parameters:**
+- `source_file` (string, required): Path to source diagram file
+- `source_tab` (string | number, optional): Source tab name or index (defaults to first tab)
+- `node_ids` (array of strings, required): Array of node IDs to copy
+- `target_file` (string, required): Path to target diagram file
+- `target_tab` (string | number, optional): Target tab name or index (defaults to first tab, creates if doesn't exist)
+- `offset_x` (number, optional): X offset to apply to copied nodes (default: 0)
+- `offset_y` (number, optional): Y offset to apply to copied nodes (default: 0)
+- `id_prefix` (string, optional): Prefix to add to copied node IDs (e.g., "copy_")
+- `id_mapping` (object, optional): Explicit ID mapping (e.g., `{"old_id": "new_id"}`)
+- `copy_connected_edges` (boolean, optional): Whether to copy edges between copied nodes (default: false)
+
+**Example (Cross-file copy with prefix):**
+```json
+{
+  "source_file": "./diagrams/templates.drawio",
+  "source_tab": "Components",
+  "node_ids": ["server1", "database1", "cache1"],
+  "target_file": "./diagrams/production.drawio",
+  "target_tab": "Infrastructure",
+  "offset_x": 200,
+  "offset_y": 50,
+  "id_prefix": "prod_",
+  "copy_connected_edges": true
+}
+```
+
+**Features:**
+- **Full property preservation**: Copies position, size, kind, title, and custom data
+- **ID conflict resolution**: Use prefix or explicit mapping to avoid ID collisions
+- **Position control**: Apply offsets to place copied nodes at desired locations
+- **Edge handling**: Optionally copy connections between copied nodes
+- **Cross-file/tab**: Copy between any combination of files and tabs
+
+---
+
 ## Output Format
 
-Diagrams are saved as `.drawio.svg` files with embedded metadata:
+Diagrams are saved as standard `.drawio` XML files:
 
-- **SVG Format**: Clean vector graphics suitable for web and print
-- **Draw.io Metadata**: Full diagram data embedded in SVG for editing
-- **VSCode Compatible**: Open directly in VSCode with draw.io extension
-- **Self-contained**: No external dependencies or additional files needed
+- **Standard XML Format**: Uncompressed, human-readable XML structure
+- **Draw.io Compatible**: Works with draw.io web, desktop, and VSCode extension
+- **Version Control Friendly**: Plain text format perfect for git diffs
+- **Self-contained**: Complete diagram data in a single XML file
 
 ## Development
 

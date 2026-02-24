@@ -1,7 +1,7 @@
 {
   "name": "drawio-mcp",
   "version": "0.0.0-auto",
-  "description": "MCP server for generating draw.io diagrams using mxgraph. Create and manage diagrams programmatically with VSCode compatibility.",
+  "description": "MCP server for generating draw.io diagrams using mxgraph. Create and manage diagrams programmatically with standard .drawio format.",
   "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "diagrams",
     "mxgraph",
     "visualization",
-    "svg",
+    "xml",
     "vscode",
     "architecture-diagrams"
   ],
@@ -43,12 +43,10 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "jsdom": "^19.0.0",
-    "mxgraph": "^4.2.2",
-    "pako": "^2.0.4"
+    "mxgraph": "^4.2.2"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "@types/pako": "^2.0.4",
     "tsx": "^4.0.0",
     "typescript": "^5.9.2"
   }
