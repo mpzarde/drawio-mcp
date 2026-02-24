@@ -538,6 +538,317 @@ Copy nodes from one diagram file/tab to another, with full property preservation
 
 ---
 
+## Table Operations
+
+Tables provide a high-level abstraction for working with tabular data in diagrams. Tables are implemented as container nodes with child cells.
+
+### create_table
+
+Create a new table with headers and optional data rows.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index (defaults to first tab)
+- `table` (object, required):
+  - `id` (string, required): Unique identifier for the table
+  - `x` (number, required): X coordinate for table position
+  - `y` (number, required): Y coordinate for table position
+  - `headers` (array of strings, required): Column headers (minimum 1)
+  - `rows` (array of arrays, optional): Data rows (each row is array of strings)
+  - `cellWidth` (number, optional): Width of each cell (default: 120)
+  - `cellHeight` (number, optional): Height of each cell (default: 30)
+  - `data` (object, optional): Additional metadata for the table
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/database.drawio",
+  "table": {
+    "id": "users_table",
+    "x": 100,
+    "y": 100,
+    "headers": ["ID", "Name", "Email", "Status"],
+    "rows": [
+      ["1", "Alice", "alice@example.com", "Active"],
+      ["2", "Bob", "bob@example.com", "Inactive"],
+      ["3", "Charlie", "charlie@example.com", "Active"]
+    ],
+    "cellWidth": 100,
+    "cellHeight": 30
+  }
+}
+```
+
+### edit_table
+
+Perform multiple operations on a table (add/remove/rename columns, add/remove rows, update cells).
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index (defaults to first tab)
+- `table_id` (string, required): ID of the table to modify
+- `operations` (array, required): Array of operation objects
+
+**Operation Types:**
+
+**Add Column:**
+```json
+{
+  "type": "add_column",
+  "header": "Created Date",
+  "position": 4,
+  "defaultValue": ""
+}
+```
+
+**Rename Column:**
+```json
+{
+  "type": "rename_column",
+  "oldHeader": "Email",
+  "newHeader": "Email Address"
+}
+```
+
+**Remove Column:**
+```json
+{
+  "type": "remove_column",
+  "column": "Status"
+}
+```
+
+**Add Row:**
+```json
+{
+  "type": "add_row",
+  "values": ["4", "Diana", "diana@example.com", "Active"],
+  "position": 3
+}
+```
+
+**Remove Row:**
+```json
+{
+  "type": "remove_row",
+  "row": 1
+}
+```
+
+**Update Cell:**
+```json
+{
+  "type": "update_cell",
+  "row": 0,
+  "column": "Status",
+  "value": "Active"
+}
+```
+
+**Example (Multiple Operations):**
+```json
+{
+  "file_path": "./diagrams/database.drawio",
+  "table_id": "users_table",
+  "operations": [
+    {
+      "type": "add_column",
+      "header": "Role",
+      "position": 4,
+      "defaultValue": "User"
+    },
+    {
+      "type": "update_cell",
+      "row": 0,
+      "column": "Role",
+      "value": "Admin"
+    },
+    {
+      "type": "rename_column",
+      "oldHeader": "Email",
+      "newHeader": "Email Address"
+    }
+  ]
+}
+```
+
+### link_to_table_cell
+
+Create connections from nodes to specific table cells.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index (defaults to first tab)
+- `edges` (array, required): Array of edge objects connecting to table cells
+
+**Edge Object:**
+- `from` (string, required): Source node ID
+- `to_table` (string, required): Target table ID
+- `to_cell` (object, required):
+  - `row` (number, required): Row index (0-based)
+  - `column` (string | number, required): Column header name or index
+- `title` (string, optional): Connection label
+- `dashed` (boolean, optional): Use dashed line style
+- `reverse` (boolean, optional): Reverse arrow direction
+- `undirected` (boolean, optional): No arrows
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/database.drawio",
+  "edges": [
+    {
+      "from": "user_service",
+      "to_table": "users_table",
+      "to_cell": {
+        "row": 0,
+        "column": "Email"
+      },
+      "title": "queries"
+    },
+    {
+      "from": "auth_service",
+      "to_table": "users_table",
+      "to_cell": {
+        "row": 2,
+        "column": "Status"
+      },
+      "title": "updates"
+    }
+  ]
+}
+```
+
+### find_tables
+
+Search for tables in a diagram using filter criteria.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index (searches all tabs if omitted)
+- `filters` (object, optional): Search criteria
+  - `id` (string): Exact ID match
+  - `id_contains` (string): Partial ID match
+  - `title` (string): Exact table title/label match
+  - `title_contains` (string): Partial table title/label match (case-insensitive)
+  - `has_column` (string): Table must have this column header
+  - `row_count_min` (number): Minimum number of rows
+  - `row_count_max` (number): Maximum number of rows
+  - `data` (object): Custom data properties to match on the table container (key-value pairs)
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/database.drawio",
+  "filters": {
+    "title_contains": "user",
+    "has_column": "Email",
+    "data": {
+      "type": "entity",
+      "schema": "public"
+    }
+  }
+}
+```
+
+**Returns:**
+```json
+{
+  "results": [
+    {
+      "id": "users_table",
+      "x": 100,
+      "y": 100,
+      "width": 400,
+      "height": 120,
+      "columns": ["ID", "Name", "Email", "Status"],
+      "rows": [
+        ["1", "Alice", "alice@example.com", "Active"],
+        ["2", "Bob", "bob@example.com", "Inactive"]
+      ],
+      "cellWidth": 100,
+      "cellHeight": 30,
+      "tab": "Database Schema"
+    }
+  ]
+}
+```
+
+### get_table_info
+
+Get detailed information about a specific table.
+
+**Parameters:**
+- `file_path` (string, required): Path to the diagram file
+- `tab` (string | number, optional): Tab name or index (defaults to first tab)
+- `table_id` (string, required): ID of the table
+
+**Example:**
+```json
+{
+  "file_path": "./diagrams/database.drawio",
+  "table_id": "users_table"
+}
+```
+
+**Returns:**
+```json
+{
+  "id": "users_table",
+  "x": 100,
+  "y": 100,
+  "width": 400,
+  "height": 120,
+  "columns": ["ID", "Name", "Email", "Status"],
+  "rows": [
+    ["1", "Alice", "alice@example.com", "Active"],
+    ["2", "Bob", "bob@example.com", "Inactive"],
+    ["3", "Charlie", "charlie@example.com", "Active"]
+  ],
+  "cellWidth": 100,
+  "cellHeight": 30
+}
+```
+
+### copy_table
+
+Copy a table from one file/tab to another, preserving its structure, data, and custom properties.
+
+**Parameters:**
+- `source_file` (string, required): Path to the source diagram file
+- `source_tab` (string | number, optional): Source tab name or index (defaults to first tab)
+- `table_id` (string, required): ID of the table to copy
+- `target_file` (string, required): Path to the target diagram file
+- `target_tab` (string | number, optional): Target tab name or index (defaults to first tab, creates if doesn't exist)
+- `new_id` (string, required): New ID for the copied table (to avoid conflicts)
+- `x` (number, required): X coordinate for the copied table
+- `y` (number, required): Y coordinate for the copied table
+- `new_title` (string, optional): New title/label for the table container
+
+**Example:**
+```json
+{
+  "source_file": "./diagrams/templates.drawio",
+  "source_tab": "Entities",
+  "table_id": "entity_template",
+  "target_file": "./diagrams/production.drawio",
+  "target_tab": "Main",
+  "new_id": "users_table",
+  "x": 150,
+  "y": 200,
+  "new_title": "Users Entity"
+}
+```
+
+**Features:**
+- Preserves all table structure (columns, rows, cell dimensions)
+- Preserves custom data properties on the table container
+- Preserves table title/label (or allows renaming)
+- Works across files and tabs
+- Automatically creates target tab if it doesn't exist
+
+---
+
 ## Output Format
 
 Diagrams are saved as standard `.drawio` XML files:

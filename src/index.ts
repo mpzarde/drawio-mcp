@@ -11,6 +11,12 @@ import { RemoveNodesTool } from './mcp/RemoveNodesTool.js';
 import { FindNodesTool } from './mcp/FindNodesTool.js';
 import { ListTabsTool } from './mcp/ListTabsTool.js';
 import { CopyNodesTool } from './mcp/CopyNodesTool.js';
+import { CreateTableTool } from './mcp/CreateTableTool.js';
+import { EditTableTool } from './mcp/EditTableTool.js';
+import { LinkToTableCellTool } from './mcp/LinkToTableCellTool.js';
+import { FindTablesTool } from './mcp/FindTablesTool.js';
+import { GetTableInfoTool } from './mcp/GetTableInfoTool.js';
+import { CopyTableTool } from './mcp/CopyTableTool.js';
 
 new McpServer({
   name: 'drawio-mcp',
@@ -25,6 +31,12 @@ new McpServer({
     new FindNodesTool(),
     new ListTabsTool(),
     new CopyNodesTool(),
+    new CreateTableTool(),
+    new EditTableTool(),
+    new LinkToTableCellTool(),
+    new FindTablesTool(),
+    new GetTableInfoTool(),
+    new CopyTableTool(),
   ]
 }).run().catch(error => {
   Logger.main.error('Failed to start MCP server', { error });

@@ -158,12 +158,27 @@ export class Graph {
     return style;
   }
 
-  
-  addNode({ id, title, parent = 'root', kind = 'Rectangle', x = 10, y = 10, corner_radius, data, ...rest }) {
+  /**
+   * Validates that a parent node exists before creating children
+   * @param parent - Parent node ID or 'root'
+   * @returns The parent cell
+   * @throws Error if parent doesn't exist
+   */
+  private validateParent(parent: string) {
+    if (parent === 'root') return this.root;
+    const parentCell = this.model.getCell(parent);
+    if (!parentCell) {
+      throw new Error(`Parent node '${parent}' does not exist`);
+    }
+    return parentCell;
+  }
+
+
+  addNode({ id, title, parent = 'root', kind = 'Rectangle', x = 10, y = 10, corner_radius, data, ...rest }: any) {
     const normalizedKind = Graph.normalizeKind(kind)
     const { style, width, height } = { ...Graph.Kinds[normalizedKind], ...rest }
 
-    const to = parent === 'root' ? this.root : this.model.getCell(parent)
+    const to = this.validateParent(parent)
     const node = this.graph.insertVertex(to, id, title, Number(x), Number(y), width, height);
     node.setStyle(this.adjustStyleByKind(style, normalizedKind, corner_radius));
 
@@ -175,7 +190,7 @@ export class Graph {
     return node
   }
 
-  editNode({ id, title, kind, x, y, width, height, corner_radius, data }) {
+  editNode({ id, title, kind, x, y, width, height, corner_radius, data }: any) {
     const node = this.model.getCell(id);
 
     if (!node) throw new Error(`Node not found`);
@@ -447,6 +462,612 @@ export class Graph {
       }
     }
     return this;
+  }
+
+  /**
+   * Create a new table with headers and data rows
+   * @param params - Table creation parameters
+   * @returns Table information object
+   */
+  addTable({ id, x, y, headers, rows = [], cellWidth = 120, cellHeight = 30, data = {} }) {
+    if (!headers || headers.length === 0) {
+      throw new Error('Table must have at least one column header');
+    }
+
+    const tableWidth = headers.length * cellWidth;
+    const tableHeight = (rows.length + 1) * cellHeight;
+
+    // Create container node with table metadata
+    const tableMetadata = {
+      ...data,
+      table: {
+        type: 'table',
+        columns: headers,
+        cellWidth,
+        cellHeight
+      }
+    };
+
+    const containerNode = this.addNode({
+      id,
+      title: '',
+      kind: 'Rectangle',
+      x,
+      y,
+      width: tableWidth,
+      height: tableHeight,
+      data: tableMetadata
+    });
+
+    // Create header cells
+    for (let col = 0; col < headers.length; col++) {
+      this.addNode({
+        id: `${id}_header_c${col}`,
+        title: headers[col],
+        kind: 'Rectangle',
+        parent: id,
+        x: col * cellWidth,
+        y: 0,
+        width: cellWidth,
+        height: cellHeight
+      });
+    }
+
+    // Create data cells for each row
+    for (let row = 0; row < rows.length; row++) {
+      for (let col = 0; col < headers.length; col++) {
+        const cellValue = rows[row][col] || '';
+        this.addNode({
+          id: `${id}_r${row}_c${col}`,
+          title: cellValue,
+          kind: 'Rectangle',
+          parent: id,
+          x: col * cellWidth,
+          y: (row + 1) * cellHeight,
+          width: cellWidth,
+          height: cellHeight
+        });
+      }
+    }
+
+    return this.getTableInfo(id);
+  }
+
+  /**
+   * Get detailed information about a table
+   * @param id - Table ID
+   * @returns Table structure and data
+   */
+  getTableInfo(id: string) {
+    const containerCell = this.model.getCell(id);
+    if (!containerCell || !containerCell.vertex) {
+      throw new Error(`Table '${id}' not found`);
+    }
+
+    // Parse table metadata
+    let tableMetadata;
+    try {
+      const cellData = containerCell.data ? JSON.parse(containerCell.data) : {};
+      tableMetadata = cellData.table;
+      if (!tableMetadata || tableMetadata.type !== 'table') {
+        throw new Error(`Node '${id}' is not a table`);
+      }
+    } catch (e) {
+      throw new Error(`Node '${id}' is not a table`);
+    }
+
+    const { columns, cellWidth, cellHeight } = tableMetadata;
+    const geometry = containerCell.getGeometry();
+
+    // Reconstruct rows by reading child cells
+    const rows: string[][] = [];
+    const cells = this.model.cells;
+
+    // Find all data cells (not headers)
+    const dataCells: any[] = [];
+    for (const cellId in cells) {
+      if (cellId.startsWith(`${id}_r`)) {
+        const cell = cells[cellId];
+        if (cell && cell.vertex) {
+          const match = cellId.match(/_r(\d+)_c(\d+)$/);
+          if (match) {
+            const rowIdx = parseInt(match[1], 10);
+            const colIdx = parseInt(match[2], 10);
+            dataCells.push({ rowIdx, colIdx, value: cell.getValue() || '' });
+          }
+        }
+      }
+    }
+
+    // Build rows array
+    if (dataCells.length > 0) {
+      const maxRow = Math.max(...dataCells.map(c => c.rowIdx));
+      for (let r = 0; r <= maxRow; r++) {
+        const row: string[] = [];
+        for (let c = 0; c < columns.length; c++) {
+          const cellData = dataCells.find(dc => dc.rowIdx === r && dc.colIdx === c);
+          row.push(cellData ? cellData.value : '');
+        }
+        rows.push(row);
+      }
+    }
+
+    return {
+      id,
+      x: geometry ? geometry.x : 0,
+      y: geometry ? geometry.y : 0,
+      width: geometry ? geometry.width : 0,
+      height: geometry ? geometry.height : 0,
+      columns,
+      rows,
+      cellWidth,
+      cellHeight
+    };
+  }
+
+  /**
+   * Add a column to an existing table
+   */
+  addTableColumn({ tableId, header, position = -1, defaultValue = '' }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, cellWidth, cellHeight, rows } = tableInfo;
+
+    // Determine insert position
+    const insertPos = position === -1 ? columns.length : position;
+    if (insertPos < 0 || insertPos > columns.length) {
+      throw new Error(`Invalid position ${position} for table with ${columns.length} columns`);
+    }
+
+    // Update table metadata
+    const newColumns = [...columns];
+    newColumns.splice(insertPos, 0, header);
+
+    const containerCell = this.model.getCell(tableId);
+    const cellData = containerCell.data ? JSON.parse(containerCell.data) : {};
+    cellData.table.columns = newColumns;
+    containerCell.data = JSON.stringify(cellData);
+
+    // Create new header cell
+    this.addNode({
+      id: `${tableId}_header_c${insertPos}`,
+      title: header,
+      kind: 'Rectangle',
+      parent: tableId,
+      x: insertPos * cellWidth,
+      y: 0,
+      width: cellWidth,
+      height: cellHeight
+    });
+
+    // Create new data cells for each row
+    for (let row = 0; row < rows.length; row++) {
+      this.addNode({
+        id: `${tableId}_r${row}_c${insertPos}`,
+        title: defaultValue,
+        kind: 'Rectangle',
+        parent: tableId,
+        x: insertPos * cellWidth,
+        y: (row + 1) * cellHeight,
+        width: cellWidth,
+        height: cellHeight
+      });
+    }
+
+    // Shift cells after insertion point to the right
+    for (let col = insertPos + 1; col <= columns.length; col++) {
+      // Update header
+      const headerCell = this.model.getCell(`${tableId}_header_c${col - 1}`);
+      if (headerCell) {
+        const geom = headerCell.getGeometry();
+        headerCell.setGeometry(new mxGeometry(col * cellWidth, geom.y, geom.width, geom.height));
+      }
+
+      // Update data cells
+      for (let row = 0; row < rows.length; row++) {
+        const dataCell = this.model.getCell(`${tableId}_r${row}_c${col - 1}`);
+        if (dataCell) {
+          const geom = dataCell.getGeometry();
+          dataCell.setGeometry(new mxGeometry(col * cellWidth, geom.y, geom.width, geom.height));
+        }
+      }
+    }
+
+    // Update container width
+    const containerGeom = containerCell.getGeometry();
+    containerCell.setGeometry(new mxGeometry(
+      containerGeom.x,
+      containerGeom.y,
+      newColumns.length * cellWidth,
+      containerGeom.height
+    ));
+
+    return this;
+  }
+
+  /**
+   * Rename a table column
+   */
+  renameTableColumn({ tableId, oldHeader, newHeader }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns } = tableInfo;
+
+    const colIndex = columns.indexOf(oldHeader);
+    if (colIndex === -1) {
+      throw new Error(`Column '${oldHeader}' not found in table '${tableId}'`);
+    }
+
+    // Update table metadata
+    const containerCell = this.model.getCell(tableId);
+    const cellData = containerCell.data ? JSON.parse(containerCell.data) : {};
+    cellData.table.columns[colIndex] = newHeader;
+    containerCell.data = JSON.stringify(cellData);
+
+    // Update header cell value
+    const headerCell = this.model.getCell(`${tableId}_header_c${colIndex}`);
+    if (headerCell) {
+      headerCell.setValue(newHeader);
+    }
+
+    return this;
+  }
+
+  /**
+   * Update a single cell in a table
+   */
+  updateTableCell({ tableId, row, column, value }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, rows } = tableInfo;
+
+    // Resolve column index
+    let colIndex: number;
+    if (typeof column === 'string') {
+      colIndex = columns.indexOf(column);
+      if (colIndex === -1) {
+        throw new Error(`Column '${column}' not found in table '${tableId}'`);
+      }
+    } else {
+      colIndex = column;
+    }
+
+    // Validate row index
+    if (row < 0 || row >= rows.length) {
+      throw new Error(`Row index ${row} out of range (0-${rows.length - 1})`);
+    }
+
+    // Update cell
+    const cellId = `${tableId}_r${row}_c${colIndex}`;
+    this.editNode({ id: cellId, title: value });
+
+    return this;
+  }
+
+  /**
+   * Add a row to a table
+   */
+  addTableRow({ tableId, values, position = -1 }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, cellWidth, cellHeight, rows } = tableInfo;
+
+    if (values.length !== columns.length) {
+      throw new Error(`Row must have ${columns.length} values, got ${values.length}`);
+    }
+
+    // Determine insert position
+    const insertPos = position === -1 ? rows.length : position;
+    if (insertPos < 0 || insertPos > rows.length) {
+      throw new Error(`Invalid position ${position} for table with ${rows.length} rows`);
+    }
+
+    // If inserting in middle, shift existing rows down
+    if (insertPos < rows.length) {
+      for (let row = rows.length - 1; row >= insertPos; row--) {
+        for (let col = 0; col < columns.length; col++) {
+          const oldCellId = `${tableId}_r${row}_c${col}`;
+          const newCellId = `${tableId}_r${row + 1}_c${col}`;
+          const cell = this.model.getCell(oldCellId);
+          if (cell) {
+            cell.setId(newCellId);
+            const geom = cell.getGeometry();
+            cell.setGeometry(new mxGeometry(geom.x, (row + 2) * cellHeight, geom.width, geom.height));
+          }
+        }
+      }
+    }
+
+    // Create new row cells
+    for (let col = 0; col < columns.length; col++) {
+      this.addNode({
+        id: `${tableId}_r${insertPos}_c${col}`,
+        title: values[col] || '',
+        kind: 'Rectangle',
+        parent: tableId,
+        x: col * cellWidth,
+        y: (insertPos + 1) * cellHeight,
+        width: cellWidth,
+        height: cellHeight
+      });
+    }
+
+    // Update container height
+    const containerCell = this.model.getCell(tableId);
+    const containerGeom = containerCell.getGeometry();
+    containerCell.setGeometry(new mxGeometry(
+      containerGeom.x,
+      containerGeom.y,
+      containerGeom.width,
+      (rows.length + 2) * cellHeight
+    ));
+
+    return this;
+  }
+
+  /**
+   * Remove a column from a table
+   */
+  removeTableColumn({ tableId, column }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, cellWidth, rows } = tableInfo;
+
+    // Resolve column index
+    let colIndex: number;
+    if (typeof column === 'string') {
+      colIndex = columns.indexOf(column);
+      if (colIndex === -1) {
+        throw new Error(`Column '${column}' not found in table '${tableId}'`);
+      }
+    } else {
+      colIndex = column;
+    }
+
+    if (columns.length === 1) {
+      throw new Error('Cannot remove the last column from a table');
+    }
+
+    // Remove header cell
+    const headerCellId = `${tableId}_header_c${colIndex}`;
+    this.removeNodes([headerCellId]);
+
+    // Remove data cells
+    const cellsToRemove: string[] = [];
+    for (let row = 0; row < rows.length; row++) {
+      cellsToRemove.push(`${tableId}_r${row}_c${colIndex}`);
+    }
+    this.removeNodes(cellsToRemove);
+
+    // Shift cells after removed column to the left
+    for (let col = colIndex + 1; col < columns.length; col++) {
+      // Rename and reposition header
+      const oldHeaderId = `${tableId}_header_c${col}`;
+      const newHeaderId = `${tableId}_header_c${col - 1}`;
+      const headerCell = this.model.getCell(oldHeaderId);
+      if (headerCell) {
+        headerCell.setId(newHeaderId);
+        const geom = headerCell.getGeometry();
+        headerCell.setGeometry(new mxGeometry((col - 1) * cellWidth, geom.y, geom.width, geom.height));
+      }
+
+      // Rename and reposition data cells
+      for (let row = 0; row < rows.length; row++) {
+        const oldCellId = `${tableId}_r${row}_c${col}`;
+        const newCellId = `${tableId}_r${row}_c${col - 1}`;
+        const dataCell = this.model.getCell(oldCellId);
+        if (dataCell) {
+          dataCell.setId(newCellId);
+          const geom = dataCell.getGeometry();
+          dataCell.setGeometry(new mxGeometry((col - 1) * cellWidth, geom.y, geom.width, geom.height));
+        }
+      }
+    }
+
+    // Update table metadata
+    const containerCell = this.model.getCell(tableId);
+    const cellData = containerCell.data ? JSON.parse(containerCell.data) : {};
+    cellData.table.columns.splice(colIndex, 1);
+    containerCell.data = JSON.stringify(cellData);
+
+    // Update container width
+    const containerGeom = containerCell.getGeometry();
+    containerCell.setGeometry(new mxGeometry(
+      containerGeom.x,
+      containerGeom.y,
+      (columns.length - 1) * cellWidth,
+      containerGeom.height
+    ));
+
+    return this;
+  }
+
+  /**
+   * Remove a row from a table
+   */
+  removeTableRow({ tableId, row }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, cellHeight, rows } = tableInfo;
+
+    if (row < 0 || row >= rows.length) {
+      throw new Error(`Row index ${row} out of range (0-${rows.length - 1})`);
+    }
+
+    // Remove cells in this row
+    const cellsToRemove: string[] = [];
+    for (let col = 0; col < columns.length; col++) {
+      cellsToRemove.push(`${tableId}_r${row}_c${col}`);
+    }
+    this.removeNodes(cellsToRemove);
+
+    // Shift subsequent rows up
+    for (let r = row + 1; r < rows.length; r++) {
+      for (let col = 0; col < columns.length; col++) {
+        const oldCellId = `${tableId}_r${r}_c${col}`;
+        const newCellId = `${tableId}_r${r - 1}_c${col}`;
+        const cell = this.model.getCell(oldCellId);
+        if (cell) {
+          cell.setId(newCellId);
+          const geom = cell.getGeometry();
+          cell.setGeometry(new mxGeometry(geom.x, r * cellHeight, geom.width, geom.height));
+        }
+      }
+    }
+
+    // Update container height
+    const containerCell = this.model.getCell(tableId);
+    const containerGeom = containerCell.getGeometry();
+    containerCell.setGeometry(new mxGeometry(
+      containerGeom.x,
+      containerGeom.y,
+      containerGeom.width,
+      rows.length * cellHeight
+    ));
+
+    return this;
+  }
+
+  /**
+   * Create a link from a node to a specific table cell
+   */
+  linkToTableCell({ from, tableId, row, column, title, style = {}, undirected }) {
+    const tableInfo = this.getTableInfo(tableId);
+    const { columns, rows } = tableInfo;
+
+    // Resolve column index
+    let colIndex: number;
+    if (typeof column === 'string') {
+      colIndex = columns.indexOf(column);
+      if (colIndex === -1) {
+        throw new Error(`Column '${column}' not found in table '${tableId}'`);
+      }
+    } else {
+      colIndex = column;
+    }
+
+    // Validate row index
+    if (row < 0 || row >= rows.length) {
+      throw new Error(`Row index ${row} out of range (0-${rows.length - 1})`);
+    }
+
+    // Construct cell ID
+    const cellId = `${tableId}_r${row}_c${colIndex}`;
+
+    // Validate cell exists
+    const cell = this.model.getCell(cellId);
+    if (!cell) {
+      throw new Error(`Cell at row ${row}, column ${colIndex} not found in table '${tableId}'`);
+    }
+
+    // Create link
+    return this.linkNodes({ from, to: cellId, title, style, undirected });
+  }
+
+  /**
+   * Copy a table to a new location, optionally renaming it
+   * @param tableId - Source table ID
+   * @param newId - New table ID
+   * @param x - X coordinate for new table
+   * @param y - Y coordinate for new table
+   * @param newTitle - Optional new title for the table container
+   * @returns New table info
+   */
+  copyTable({ tableId, newId, x, y, newTitle }: any) {
+    const sourceTableInfo = this.getTableInfo(tableId);
+    const sourceContainer = this.model.getCell(tableId);
+
+    if (!sourceContainer) {
+      throw new Error(`Table '${tableId}' not found`);
+    }
+
+    // Get container title and custom data
+    const containerTitle = newTitle !== undefined ? newTitle : (sourceContainer.getValue() || '');
+    const containerData = sourceContainer.data ? JSON.parse(sourceContainer.data) : {};
+    const customData = { ...containerData };
+    delete customData.table; // Remove table metadata, will be recreated
+
+    // Create new table with same structure
+    const newTableInfo = this.addTable({
+      id: newId,
+      x: Number(x),
+      y: Number(y),
+      headers: sourceTableInfo.columns,
+      rows: sourceTableInfo.rows,
+      cellWidth: sourceTableInfo.cellWidth,
+      cellHeight: sourceTableInfo.cellHeight,
+      data: customData
+    });
+
+    // Update container title if provided
+    if (containerTitle) {
+      const newContainer = this.model.getCell(newId);
+      if (newContainer) {
+        newContainer.setValue(containerTitle);
+      }
+    }
+
+    return newTableInfo;
+  }
+
+  /**
+   * Find tables matching filter criteria
+   */
+  findTables({ filters = {} }: { filters?: any } = {}) {
+    const allNodes = this.getAllNodes();
+    const tables: any[] = [];
+
+    for (const node of allNodes) {
+      // Check if node is a table
+      if (!node.data || !node.data.table || node.data.table.type !== 'table') {
+        continue;
+      }
+
+      // Get full table info
+      try {
+        const tableInfo = this.getTableInfo(node.id);
+
+        // Apply filters
+        if (filters.id && tableInfo.id !== filters.id) continue;
+        if (filters.id_contains && !tableInfo.id.includes(filters.id_contains)) continue;
+
+        // Filter by table title/label
+        if (filters.title && node.title !== filters.title) continue;
+        if (filters.title_contains) {
+          const titleLower = (node.title || '').toLowerCase();
+          const searchLower = filters.title_contains.toLowerCase();
+          if (!titleLower.includes(searchLower)) continue;
+        }
+
+        // Filter by custom data properties on table container
+        if (filters.data) {
+          const containerData = node.data || {};
+          let dataMatches = true;
+          for (const key in filters.data) {
+            // Skip the 'table' property which is internal metadata
+            if (key === 'table') continue;
+            if (containerData[key] !== filters.data[key]) {
+              dataMatches = false;
+              break;
+            }
+          }
+          if (!dataMatches) continue;
+        }
+
+        if (filters.has_column && !tableInfo.columns.includes(filters.has_column)) continue;
+        if (filters.row_count_min !== undefined && tableInfo.rows.length < filters.row_count_min) continue;
+        if (filters.row_count_max !== undefined && tableInfo.rows.length > filters.row_count_max) continue;
+
+        // Include title and custom data in results
+        const result = {
+          ...tableInfo,
+          title: node.title || '',
+          data: { ...node.data }
+        };
+        delete result.data.table; // Remove internal metadata from results
+
+        tables.push(result);
+      } catch (e) {
+        // Skip invalid tables
+        continue;
+      }
+    }
+
+    return tables;
   }
 
   toXML() {
